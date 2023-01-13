@@ -30,7 +30,6 @@ class _ButtonAndDisplayState extends State<ButtonAndDisplay> {
 
   @override
   Widget build(BuildContext context) {
-    widget.port.openReadWrite();
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -46,8 +45,8 @@ class _ButtonAndDisplayState extends State<ButtonAndDisplay> {
               ),
             ),
             onPressed: () {
-              _sendSerialData(widget.port, widget.command);
-              _receiveSerialData(widget.port);
+              _sendSerialData();
+              _receiveSerialData();
             },
             child: Text(
               widget.buttonText,
@@ -62,29 +61,31 @@ class _ButtonAndDisplayState extends State<ButtonAndDisplay> {
     );
   }
 
-  @override
-  void dispose() {
-    widget.port.close();
-    super.dispose();
-  }
+  void _sendSerialData() {
+    if (widget.port.isOpen) widget.port.close();
 
-  void _sendSerialData(SerialPort port, Commands command) {
+    widget.port.open(mode: SerialPortMode.write);
+
     try {
-      port.write(Uint8List.fromList(utf8.encode(_getCharFromCommand(command))));
+      widget.port.write(Uint8List.fromList(utf8.encode(_getCharFromCommand())));
+      widget.port.drain();
     } catch (err, _) {
       print(SerialPort.lastError);
     }
-    port.close();
   }
 
-  void _receiveSerialData(SerialPort port) {
+  void _receiveSerialData() {
     try {
-      SerialPortReader reader = SerialPortReader(port);
+      if (widget.port.isOpen) widget.port.close();
+      widget.port.open(mode: SerialPortMode.read);
+
+      SerialPortReader reader = SerialPortReader(widget.port);
       Stream<String> upCommingData = reader.stream.map((data) {
         return String.fromCharCodes(data);
       });
 
       upCommingData.listen((byte) {
+        print('byte leído: $byte');
         tmpValue.length == 4
             ? setState(() {
                 value = tmpValue;
@@ -97,8 +98,8 @@ class _ButtonAndDisplayState extends State<ButtonAndDisplay> {
     }
   }
 
-  String _getCharFromCommand(Commands command) {
-    switch (command) {
+  String _getCharFromCommand() {
+    switch (widget.command) {
       case Commands.plusOneClk:
         return 'S';
       case Commands.getPc:

@@ -4,12 +4,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
+import 'package:libserialport/src/config.dart';
 import '../models/commands.dart';
 
 class MainButton extends StatelessWidget {
   final Color color;
   final String text;
-  final String port;
+  final SerialPort port;
   final Commands command;
 
   const MainButton({
@@ -29,7 +30,7 @@ class MainButton extends StatelessWidget {
           minimumSize: const Size.fromHeight(1),
           backgroundColor: color,
         ),
-        onPressed: () => _sendSerialData(SerialPort(port), command),
+        onPressed: () => _sendSerialData(),
         child: Text(
           text,
           style: const TextStyle(fontSize: 32),
@@ -38,16 +39,24 @@ class MainButton extends StatelessWidget {
     );
   }
 
-  Future<void> _sendSerialData(SerialPort port, Commands command) async {
+  Future<void> _sendSerialData() async {
     try {
-      port.openWrite();
-      var char = _getCharFromCommand(command);
-      port.write(Uint8List.fromList(utf8.encode(char)));
-      if (char == 'B') {
+      if (port.isOpen) port.close();
+      port.open(mode: SerialPortMode.write);
+
+      var char = _getCharFromCommand();
+      Uint8List dataToSend;
+      var charWrited = port.write(_stringToUint8List(char));
+      print('charWrited: $charWrited');
+      port.drain();
+
+      if (command == Commands.bootloader) {
         FilePickerResult? result = await FilePicker.platform.pickFiles();
         if (result != null) {
-          File file = File(result.files.single.path!);
-          port.write(Uint8List.fromList(file.readAsBytesSync()));
+          var filteBytes = File(result.files.single.path!).readAsBytesSync();
+          var fileWritedBytes = port.write(filteBytes);
+          port.drain();
+          print('fileWritedBytes: $fileWritedBytes');
         } else {
           print('The user did not select any file');
         }
@@ -55,10 +64,15 @@ class MainButton extends StatelessWidget {
     } catch (err, _) {
       print(SerialPort.lastError);
     }
-    port.close();
   }
 
-  String _getCharFromCommand(Commands command) {
+  Uint8List _stringToUint8List(String data) {
+    List<int> codeUnits = data.codeUnits;
+    Uint8List uint8list = Uint8List.fromList(codeUnits);
+    return uint8list;
+  }
+
+  String _getCharFromCommand() {
     switch (command) {
       case Commands.bootloader:
         return 'B';
